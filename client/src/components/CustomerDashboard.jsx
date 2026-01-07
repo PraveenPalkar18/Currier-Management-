@@ -1,7 +1,8 @@
 import { useState, useEffect, useContext } from 'react';
-import { Table, Button, Badge, Form, Card, Row, Col } from 'react-bootstrap';
+import { Table, Button, Badge, Form, Card, Row, Col, Modal } from 'react-bootstrap';
 import axios from 'axios';
 import AuthContext from '../context/AuthContext';
+import MiniTrackingMap from './MiniTrackingMap';
 
 const CustomerDashboard = () => {
     const [shipments, setShipments] = useState([]);
@@ -15,6 +16,10 @@ const CustomerDashboard = () => {
         distance: '',
         cost: 0
     });
+
+    // Tracking Modal State
+    const [showMap, setShowMap] = useState(false);
+    const [selectedShipment, setSelectedShipment] = useState(null);
 
     const { user } = useContext(AuthContext);
 
@@ -71,6 +76,16 @@ const CustomerDashboard = () => {
         } catch (error) {
             console.error(error);
         }
+    };
+
+    const handleOpenMap = (shipment) => {
+        setSelectedShipment(shipment);
+        setShowMap(true);
+    };
+
+    const handleCloseMap = () => {
+        setShowMap(false);
+        setSelectedShipment(null);
     };
 
     return (
@@ -154,6 +169,7 @@ const CustomerDashboard = () => {
                         <th>Route</th>
                         <th>Status</th>
                         <th>Cost</th>
+                        <th>Actions</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -164,10 +180,32 @@ const CustomerDashboard = () => {
                             <td>{s.from} -&gt; {s.to}</td>
                             <td><Badge bg="info">{s.currentStatus}</Badge></td>
                             <td>${s.cost}</td>
+                            <td>
+                                {(s.currentStatus === 'In Transit' || s.currentStatus === 'Out for Delivery') && (
+                                    <Button variant="outline-primary" size="sm" onClick={() => handleOpenMap(s)}>
+                                        Track Live
+                                    </Button>
+                                )}
+                            </td>
                         </tr>
                     ))}
                 </tbody>
             </Table>
+
+            {/* Tracking Modal */}
+            <Modal show={showMap} onHide={handleCloseMap} size="lg" centered>
+                <Modal.Header closeButton>
+                    <Modal.Title>Live Tracking: {selectedShipment?.trackingId}</Modal.Title>
+                </Modal.Header>
+                <Modal.Body style={{ minHeight: '400px' }}>
+                    {selectedShipment && (
+                        <MiniTrackingMap
+                            trackingId={selectedShipment.trackingId}
+                            initialLocation={selectedShipment.currentLocation}
+                        />
+                    )}
+                </Modal.Body>
+            </Modal>
         </div>
     );
 };

@@ -1,5 +1,5 @@
 import { useState, useContext } from 'react';
-import { Container, Row, Col, Form, Button, Card } from 'react-bootstrap';
+import { Container, Row, Col, Form, Button, Card, Alert } from 'react-bootstrap';
 import { Link, useNavigate } from 'react-router-dom';
 import AuthContext from '../context/AuthContext';
 
@@ -14,13 +14,17 @@ const Login = () => {
         navigate('/dashboard');
     }
 
+    const [error, setError] = useState('');
+
     const handleSubmit = async (e) => {
         e.preventDefault();
+        setError('');
         try {
             await login(email, password);
             navigate('/dashboard');
         } catch (err) {
             console.error(err);
+            setError(err.response?.data?.message || 'Login failed. Please check your credentials.');
         }
     };
 
@@ -31,6 +35,7 @@ const Login = () => {
                     <Card className="shadow-lg border-0">
                         <Card.Body className="p-5">
                             <h2 className="text-center fw-bold mb-4">Welcome Back</h2>
+                            {error && <Alert variant="danger">{error}</Alert>}
                             <Form onSubmit={handleSubmit}>
                                 <Form.Group className="mb-3" controlId="formBasicEmail">
                                     <Form.Label>Email address</Form.Label>

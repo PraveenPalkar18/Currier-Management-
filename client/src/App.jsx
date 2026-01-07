@@ -4,6 +4,7 @@ import Home from './pages/Home';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import Dashboard from './pages/Dashboard';
+import Tracking from './pages/Tracking';
 import { AuthProvider } from './context/AuthContext';
 
 function App() {
@@ -19,7 +20,8 @@ function App() {
               <Route path="/login" element={<Login />} />
               <Route path="/register" element={<Register />} />
               <Route path="/dashboard" element={<Dashboard />} />
-              <Route path="/track" element={<div className="p-5 text-center">Tracking Page</div>} />
+              <Route path="/dashboard" element={<Dashboard />} />
+              <Route path="/tracking/:id" element={<Tracking />} />
             </Routes>
           </main>
         </div>

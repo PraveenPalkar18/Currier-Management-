@@ -42,7 +42,12 @@ const shipmentSchema = new mongoose.Schema({
         status: String,
         location: String,
         date: { type: Date, default: Date.now }
-    }]
+    }],
+    currentLocation: {
+        lat: Number,
+        lng: Number,
+        updatedAt: { type: Date }
+    }
 }, {
     timestamps: true,
 });

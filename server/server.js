@@ -36,6 +36,60 @@ app.use((err, req, res, next) => {
     });
 });
 
+const http = require('http');
+const { Server } = require('socket.io');
+
+const server = http.createServer(app);
+const io = new Server(server, {
+    cors: {
+        origin: "http://localhost:5173",
+        methods: ["GET", "POST"]
+    }
+});
+
+io.on('connection', (socket) => {
+    console.log('User Connected:', socket.id);
+
+    // Join a room for a specific shipment
+    socket.on('join_tracking', (trackingId) => {
+        socket.join(trackingId);
+        console.log(`User with ID: ${socket.id} joined room: ${trackingId}`);
+    });
+
+    // Driver sends location updates
+    socket.on('update_location', async (data) => {
+        const { trackingId, location } = data;
+        // console.log(`Location update for ${trackingId}:`, location);
+
+        // Broadcast to everyone in the room (including the sender? no, usually to others)
+        // socket.to(trackingId).emit("receive_location", location);
+        // actually let's emit to the room so everyone sees it
+        io.to(trackingId).emit("receive_location", location);
+
+        // Optional: Update DB (debounce this in real app, but for now update on every hit or simple check)
+        // For simplicity in this demo, we might want to update it in the DB asynchronously
+        try {
+            const Shipment = require('./models/Shipment');
+            await Shipment.findOneAndUpdate(
+                { trackingId: trackingId },
+                {
+                    currentLocation: {
+                        lat: location.lat,
+                        lng: location.lng,
+                        updatedAt: new Date()
+                    }
+                }
+            );
+        } catch (err) {
+            console.error("Error updating location in DB:", err);
+        }
+    });
+
+    socket.on('disconnect', () => {
+        console.log('User Disconnected', socket.id);
+    });
+});
+
 const PORT = process.env.PORT || 5000;
 
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
