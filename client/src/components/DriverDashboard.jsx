@@ -1,8 +1,9 @@
 import { useState, useEffect, useContext, useRef } from 'react';
-import { Table, Button, Badge, Alert } from 'react-bootstrap';
+import { Table, Button, Badge, Alert, Modal, Form } from 'react-bootstrap';
 import axios from 'axios';
 import AuthContext from '../context/AuthContext';
 import io from 'socket.io-client';
+import SignatureCanvas from 'react-signature-canvas';
 
 const DriverDashboard = () => {
     const [shipments, setShipments] = useState([]);
@@ -10,6 +11,12 @@ const DriverDashboard = () => {
     const [socket, setSocket] = useState(null);
     const [activeTrackingId, setActiveTrackingId] = useState(null);
     const [gpsError, setGpsError] = useState(null);
+
+    // POD State
+    const [showPodModal, setShowPodModal] = useState(false);
+    const [selectedShipment, setSelectedShipment] = useState(null);
+    const [podPhoto, setPodPhoto] = useState(null);
+    const sigCanvas = useRef({});
 
     // Use ref to store watchId so we can clear it easily
     const watchIdRef = useRef(null);
@@ -64,6 +71,51 @@ const DriverDashboard = () => {
             setShipments(shipments.map(s => s._id === id ? { ...s, ...data } : s));
         } catch (error) {
             console.error(error);
+        }
+    };
+
+    const handlePodClick = (shipment) => {
+        setSelectedShipment(shipment);
+        setShowPodModal(true);
+    };
+
+    const handlePodSubmit = async () => {
+        if (!selectedShipment) return;
+
+        const signature = sigCanvas.current.getTrimmedCanvas().toDataURL('image/png');
+        const formData = new FormData();
+        formData.append('signature', signature);
+        if (podPhoto) {
+            formData.append('photo', podPhoto);
+        }
+
+        try {
+            const config = {
+                headers: {
+                    Authorization: `Bearer ${user.token}`,
+                    'Content-Type': 'multipart/form-data'
+                },
+            };
+            await axios.post(`http://localhost:5000/api/shipments/${selectedShipment._id}/deliver`, formData, config);
+
+            // Clean up
+            setShowPodModal(false);
+            setPodPhoto(null);
+
+            // Refetch to ensure status is correct
+            const { data } = await axios.get('http://localhost:5000/api/shipments/driver', { headers: { Authorization: `Bearer ${user.token}` } });
+            setShipments(data);
+
+            // Stop tracking if active
+            if (activeTrackingId === selectedShipment.trackingId) {
+                stopTracking();
+            }
+
+            alert('Delivery Completed Successfully!');
+
+        } catch (error) {
+            console.error(error);
+            alert('Failed to submit proof of delivery');
         }
     };
 
@@ -182,11 +234,10 @@ const DriverDashboard = () => {
                                         <Button variant="primary" size="sm" onClick={() => acceptShipment(s._id)}>Accept Job</Button>
                                     ) : isAssignedToMe ? (
                                         <div className="d-flex flex-column gap-2">
-                                            <div className="d-flex gap-2">
-                                                <Button variant="outline-primary" size="sm" onClick={() => updateStatus(s._id, 'In Transit')}>Shipped</Button>
-                                                <Button variant="outline-warning" size="sm" onClick={() => updateStatus(s._id, 'Out for Delivery')}>Delivering</Button>
-                                                <Button variant="success" size="sm" onClick={() => updateStatus(s._id, 'Delivered')}>Delivered</Button>
-                                            </div>
+                                            <Button variant="outline-primary" size="sm" onClick={() => updateStatus(s._id, 'In Transit')}>Shipped</Button>
+                                            <Button variant="outline-warning" size="sm" onClick={() => updateStatus(s._id, 'Out for Delivery')}>Delivering</Button>
+                                            <Button variant="success" size="sm" onClick={() => handlePodClick(s)}>Complete Delivery</Button>
+
                                             {/* Tracking Controls */}
                                             {s.currentStatus !== 'Delivered' && s.currentStatus !== 'Cancelled' && (
                                                 <div className="mt-1">
@@ -215,7 +266,34 @@ const DriverDashboard = () => {
                 </tbody>
             </Table>
             {shipments.length === 0 && <Alert variant="info">No shipments available at the moment.</Alert>}
-        </div>
+
+            {/* POD Modal */}
+            <Modal show={showPodModal} onHide={() => setShowPodModal(false)} centered>
+                <Modal.Header closeButton>
+                    <Modal.Title>Complete Delivery (POD)</Modal.Title>
+                </Modal.Header>
+                <Modal.Body>
+                    <Form.Group className="mb-3">
+                        <Form.Label>Customer Signature</Form.Label>
+                        <div style={{ border: '1px solid #ccc', borderRadius: '5px' }}>
+                            <SignatureCanvas
+                                ref={sigCanvas}
+                                canvasProps={{ width: 450, height: 200, className: 'sigCanvas' }}
+                            />
+                        </div>
+                        <Button variant="secondary" size="sm" className="mt-2" onClick={() => sigCanvas.current.clear()}>Clear Signature</Button>
+                    </Form.Group>
+                    <Form.Group className="mb-3">
+                        <Form.Label>Upload Delivery Photo</Form.Label>
+                        <Form.Control type="file" onChange={(e) => setPodPhoto(e.target.files[0])} accept="image/*" />
+                    </Form.Group>
+                </Modal.Body>
+                <Modal.Footer>
+                    <Button variant="secondary" onClick={() => setShowPodModal(false)}>Cancel</Button>
+                    <Button variant="success" onClick={handlePodSubmit}>Submit & Mark Delivered</Button>
+                </Modal.Footer>
+            </Modal>
+        </div >
     );
 };
 

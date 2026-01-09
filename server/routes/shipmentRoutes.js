@@ -35,21 +35,40 @@ router.post('/', protect, async (req, res) => {
 // @desc    Accept shipment (Driver)
 // @route   PUT /api/shipments/:id/accept
 // @access  Private (Driver)
+// @desc    Accept shipment (Driver)
+// @route   PUT /api/shipments/:id/accept
+// @access  Private (Driver)
 router.put('/:id/accept', protect, async (req, res) => {
-    const shipment = await Shipment.findById(req.params.id);
+    // Atomic update to prevent race conditions
+    const shipment = await Shipment.findOneAndUpdate(
+        { _id: req.params.id, driver: null }, // Only find if driver is null
+        {
+            driver: req.user.id,
+            currentStatus: 'In Transit',
+            $push: { statusHistory: { status: 'In Transit/Accepted', location: 'Driver Location' } }
+        },
+        { new: true }
+    );
 
     if (shipment) {
-        if (shipment.driver) {
-            res.status(400);
-            return res.json({ message: 'Shipment already assigned' });
+        // Notification Logic
+        const io = req.app.get('io');
+        if (io) {
+            io.to(shipment.user.toString()).emit('shipment_updated', {
+                type: 'info',
+                message: `Your shipment ${shipment.trackingId} has been accepted by a driver!`,
+                shipment
+            });
         }
 
-        shipment.driver = req.user.id;
-        shipment.currentStatus = 'In Transit';
-
-        await shipment.save();
         res.json(shipment);
     } else {
+        // Find again to check if it was just taken
+        const existingShipment = await Shipment.findById(req.params.id);
+        if (existingShipment && existingShipment.driver) {
+            res.status(400);
+            return res.json({ message: 'Shipment already assigned to another driver' });
+        }
         res.status(404);
         res.json({ message: 'Shipment not found' });
     }
@@ -67,6 +86,17 @@ router.put('/:id/status', protect, async (req, res) => {
         shipment.statusHistory.push({ status, location });
 
         await shipment.save();
+
+        // Notification Logic
+        const io = req.app.get('io');
+        if (io) {
+            io.to(shipment.user.toString()).emit('shipment_updated', {
+                type: 'success',
+                message: `Shipment ${shipment.trackingId} is now ${status}`,
+                shipment
+            });
+        }
+
         res.json(shipment);
     } else {
         res.status(404);
@@ -123,6 +153,61 @@ router.get('/:id', async (req, res) => {
     }
 
     res.status(200).json(shipment);
+});
+
+// Multer setup for file uploads
+const multer = require('multer');
+const path = require('path');
+
+const storage = multer.diskStorage({
+    destination: (req, file, cb) => {
+        cb(null, 'uploads/proofs/'); // Make sure this directory exists
+    },
+    filename: (req, file, cb) => {
+        cb(null, `${req.params.id}-${Date.now()}${path.extname(file.originalname)}`);
+    }
+});
+
+const upload = multer({ storage });
+
+// @desc    Complete Delivery with POD
+// @route   POST /api/shipments/:id/deliver
+// @access  Private (Driver)
+router.post('/:id/deliver', protect, upload.single('photo'), async (req, res) => {
+    const { signature } = req.body;
+    const shipment = await Shipment.findById(req.params.id);
+
+    if (shipment) {
+        if (shipment.driver.toString() !== req.user.id) {
+            res.status(401);
+            return res.json({ message: 'Not authorized' });
+        }
+
+        shipment.currentStatus = 'Delivered';
+        shipment.proofOfDelivery = {
+            signature: signature, // Base64 string
+            photo: req.file ? `/uploads/proofs/${req.file.filename}` : null,
+            timestamp: Date.now()
+        };
+        shipment.statusHistory.push({ status: 'Delivered', location: 'Destination' });
+
+        await shipment.save();
+
+        // Notification Logic
+        const io = req.app.get('io');
+        if (io) {
+            io.to(shipment.user.toString()).emit('shipment_updated', {
+                type: 'success',
+                message: `Shipment ${shipment.trackingId} has been DELIVERED!`,
+                shipment
+            });
+        }
+
+        res.json(shipment);
+    } else {
+        res.status(404);
+        res.json({ message: 'Shipment not found' });
+    }
 });
 
 module.exports = router;

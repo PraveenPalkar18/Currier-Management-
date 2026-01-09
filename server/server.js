@@ -21,6 +21,8 @@ app.use(cookieParser());
 app.use('/api/auth', require('./routes/authRoutes'));
 app.use('/api/shipments', require('./routes/shipmentRoutes'));
 app.use('/api/users', require('./routes/userRoutes'));
+app.use('/api/analytics', require('./routes/analyticsRoutes'));
+app.use('/uploads', express.static('uploads'));
 
 app.get('/', (req, res) => {
     res.send('API is running...');
@@ -47,8 +49,17 @@ const io = new Server(server, {
     }
 });
 
+// Make io accessible to our router
+app.set('io', io);
+
 io.on('connection', (socket) => {
     console.log('User Connected:', socket.id);
+
+    // Join a room for a specific user (for notifications)
+    socket.on('join_user_room', (userId) => {
+        socket.join(userId);
+        console.log(`User ${userId} joined their personal room`);
+    });
 
     // Join a room for a specific shipment
     socket.on('join_tracking', (trackingId) => {

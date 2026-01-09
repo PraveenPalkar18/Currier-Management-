@@ -47,6 +47,11 @@ const shipmentSchema = new mongoose.Schema({
         lat: Number,
         lng: Number,
         updatedAt: { type: Date }
+    },
+    proofOfDelivery: {
+        signature: String, // Base64 or URL
+        photo: String,     // URL to uploaded file
+        timestamp: { type: Date }
     }
 }, {
     timestamps: true,
